@@ -1,0 +1,156 @@
+name: CI
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AUTH_SECRET_PLACEHOLDER: ci-test-auth-secret-must-be-at-least-32-chars-ok
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Cache Bun install cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-install-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-install-
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Check production env contract
+        run: bun run check:prod-env
+        env:
+          CI: "true"
+          AUTH_SECRET: ${{ env.AUTH_SECRET_PLACEHOLDER }}
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Typecheck
+        run: bun run typecheck
+        env:
+          AUTH_SECRET: ${{ env.AUTH_SECRET_PLACEHOLDER }}
+
+      - name: Unit tests
+        run: bun run test
+        env:
+          AUTH_SECRET: ${{ env.AUTH_SECRET_PLACEHOLDER }}
+
+      - name: Production build
+        run: bun run build
+        env:
+          AUTH_SECRET: ${{ env.AUTH_SECRET_PLACEHOLDER }}
+          DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci?sslmode=disable
+          DIRECT_URL: postgresql://ci:ci@127.0.0.1:5432/ci?sslmode=disable
+
+      - name: Dependency audit (high and critical only)
+        run: bun audit --audit-level=high
+
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: python -m pip install --upgrade pip uv
+
+      - name: Install backend deps
+        working-directory: backend
+        run: uv sync --frozen --group dev
+
+      - name: Ruff (lint)
+        working-directory: backend
+        run: uv run ruff check .
+
+      - name: Ruff (format)
+        working-directory: backend
+        run: uv run ruff format --check .
+
+      - name: Pyright
+        working-directory: backend
+        run: uv run pyright
+
+      - name: Pytest
+        working-directory: backend
+        run: uv run pytest
+
+  e2e:
+    needs:
+      - quality
+      - backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d ci"
+          --health-interval 4s
+          --health-timeout 5s
+          --health-retries 10
+
+    # `env` context is not valid in job-level `env:` — use literals. On `runs-on: ubuntu-latest`, steps
+    # run on the VM host; the Postgres service is reachable at 127.0.0.1:5432 (not host `postgres`, which only works from job containers on the same Docker network as the service).
+    env:
+      CI: "true"
+      AUTH_SECRET: ci-test-auth-secret-must-be-at-least-32-chars-ok
+      AUTH_URL: http://127.0.0.1:3000
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci?sslmode=disable
+      DIRECT_URL: postgresql://ci:ci@127.0.0.1:5432/ci?sslmode=disable
+      AUTH_GOOGLE_ID: e2e-ci-placeholder-google-id
+      AUTH_GOOGLE_SECRET: e2e-ci-placeholder-google-oauth-secret-32b
+      AUTH_MICROSOFT_ENTRA_ID_ID: e2e-ci-placeholder-ms-id
+      AUTH_MICROSOFT_ENTRA_ID_SECRET: e2e-ci-placeholder-ms-oauth-secret-32b
+      AUTH_MICROSOFT_ENTRA_ID_ISSUER: https://login.microsoftonline.com/common/v2.0
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: Cache Bun install cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-install-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-install-
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      - name: Install Playwright (Chromium)
+        run: bunx playwright install --with-deps chromium
+
+      - name: Prepare Postgres for Supabase-oriented migrations
+        run: bunx prisma db execute --file scripts/ci-postgres-stub-for-prisma.sql --schema prisma/schema.prisma
+
+      - name: Prisma migrate deploy
+        run: bunx prisma migrate deploy
+
+      - name: E2E tests
+        run: bun run test:e2e

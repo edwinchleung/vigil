@@ -1,0 +1,1 @@
+"""Vigil FastAPI application package."""

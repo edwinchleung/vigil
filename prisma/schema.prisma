@@ -1,0 +1,156 @@
+// Vigil - Prisma schema
+// NextAuth.js (Auth.js v5) standard tables + application-specific Email table.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum AiStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id             String    @id @default(cuid())
+  name           String?
+  email          String?   @unique
+  emailVerified  DateTime?
+  image          String?
+  /// Telegram chat id for bypass / critical alerts (Milestone 5+)
+  telegramChatId String?
+  accounts       Account[]
+  sessions       Session[]
+  emails         Email[]
+  intents        Intent[]
+  /// Last time a sync was allowed to start (rate limit / cooldown)
+  lastSyncAt     DateTime?
+  /// While set and in the future, another sync is in progress (mutex); stale if process crashes
+  syncLockUntil  DateTime?
+  /// Free-form instructions for inbox triage (role, rubric, topics to deprioritize). Used by the Context Engine.
+  classificationPolicy String?  @db.Text
+  /// Optional JSON: groundingSimilarityFloor, groundingExampleLimit, intentMatchLimit (clamped server-side).
+  aiPreferences        Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// Vigil application data. Populated in Milestone 2 by the Gmail / Graph fetchers.
+model Email {
+  id         String   @id @default(cuid())
+  userId     String
+  provider   String
+  externalId String
+  /// Provider thread / conversation id (Gmail threadId, Graph conversationId)
+  threadId   String?
+  subject    String?
+  sender     String?
+  snippet    String?
+  receivedAt DateTime
+  isRead     Boolean  @default(false)
+  raw        Json?
+  createdAt  DateTime @default(now())
+
+  aiStatus   AiStatus @default(PENDING)
+  vigilScore Int?
+  category   String?
+  summary    String?
+  /// AI-extracted tasks (JSON), written by the FastAPI pipeline
+  actions    Json?
+  /// Cached embedding of the email text, reused for RAG grounding without re-embedding.
+  embedding  Unsupported("vector(384)")?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, externalId, userId])
+  @@index([userId, receivedAt])
+}
+
+/// User-defined natural-language goals for the Context Engine (Milestone 3+).
+/// Postgres: RLS enabled (default deny for anon/data API); app uses Prisma + service role. See migration `20260428120000_intent_row_level_security`.
+model Intent {
+  id        String   @id @default(cuid())
+  userId    String
+  query     String
+  deadline  DateTime?
+  isActive  Boolean  @default(true)
+  embedding Unsupported("vector(384)")?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Singleton app config (e.g. secret for Supabase → FastAPI webhook auth). Upsert with id `default`.
+model SystemConfig {
+  id                 String   @id
+  internalApiSecret  String   @map("internal_api_secret")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+/// User-triggered analysis requests consumed by the FastAPI worker (browser writes via Supabase).
+model EmailAnalysisRequest {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String
+  /// When null, request means "analyze all not-yet-analyzed emails" for the user.
+  emailId     String?
+  /// 'single' | 'all_unanalyzed'
+  mode        String
+  /// 'PENDING' | 'CLAIMED' | 'DONE' | 'FAILED'
+  status      String    @default("PENDING")
+  error       String?
+  createdAt   DateTime  @default(now())
+  claimedAt   DateTime?
+  processedAt DateTime?
+
+  @@index([userId, status, createdAt])
+  @@index([status, createdAt])
+ }
