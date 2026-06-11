@@ -32,6 +32,17 @@ From the repo root [`Makefile`](../Makefile) (optional):
 
 FastAPI runtime configuration lives in [`backend/.env.example`](../backend/.env.example) and [`backend/README.md`](../backend/README.md) (keep API secrets out of `NEXT_PUBLIC_*`).
 
+## Docker
+
+To run containerized web + API instead of native dev servers, see [docker.md](docker.md).
+
+```bash
+cp .env.docker.example .env.docker
+docker compose up --build
+```
+
+Optional profiles: `local-db` (bundled Postgres), `ollama` (local LLM). Production: `docker compose -f docker-compose.prod.yml up -d --build`.
+
 ## Running web + API together (local dev)
 
 See [getting-started.md](getting-started.md) for first-time setup, OAuth, and running both services. Quick reference:

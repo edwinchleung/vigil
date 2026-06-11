@@ -64,6 +64,15 @@ Then open [http://localhost:3000](http://localhost:3000).
 
 **Full setup** (Supabase, OAuth, env vars, AI backend) → [docs/getting-started.md](docs/getting-started.md)
 
+**Docker** (containerized web + API):
+
+```bash
+cp .env.docker.example .env.docker   # fill in secrets
+docker compose up --build
+```
+
+See [docs/docker.md](docs/docker.md) for profiles (`local-db`, `ollama`) and production compose.
+
 ## Documentation
 
 | Document | Description |
@@ -74,6 +83,7 @@ Then open [http://localhost:3000](http://localhost:3000).
 | [docs/architecture.md](docs/architecture.md) | Request flows, security, module map |
 | [docs/data-and-sync.md](docs/data-and-sync.md) | Data model, sync behavior, Realtime |
 | [docs/development.md](docs/development.md) | Scripts, testing, CI, environment reference |
+| [docs/docker.md](docs/docker.md) | Docker Compose, images, profiles, production |
 | [backend/README.md](backend/README.md) | Context Engine API, webhooks, processing pipeline |
 
 ## Roadmap

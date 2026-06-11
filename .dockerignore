@@ -1,0 +1,38 @@
+# Dependencies and build output
+node_modules
+.next
+out
+backend/.venv
+backend/**/__pycache__
+**/*.pyc
+.pytest_cache
+.ruff_cache
+
+# Git and IDE
+.git
+.gitignore
+.cursor
+.vscode
+
+# Local env and secrets
+.env
+.env.*
+!.env.docker.example
+backend/.env
+
+# Tests and reports
+test-results
+playwright-report
+coverage
+htmlcov
+
+# Docs and misc (not needed in images)
+docs
+product-development-plan.md
+e2e
+*.md
+!README.md
+
+# OS
+.DS_Store
+Thumbs.db

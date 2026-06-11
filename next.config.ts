@@ -22,6 +22,8 @@ function contentSecurityPolicy(): string {
 }
 
 const nextConfig: NextConfig = {
+  output: "standalone",
+
   /* Dev: allow HMR when the app is opened via 127.0.0.1 while the dev server advertises another host. */
   allowedDevOrigins: ["127.0.0.1"],
 

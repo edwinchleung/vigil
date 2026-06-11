@@ -15,5 +15,6 @@
 | [architecture.md](architecture.md) | Request flows, security, module map |
 | [data-and-sync.md](data-and-sync.md) | Prisma model, sync behavior, Realtime, RLS |
 | [development.md](development.md) | Scripts, testing, CI, environment variables |
+| [docker.md](docker.md) | Docker images, Compose profiles, production deploy |
 | [backend/README.md](../backend/README.md) | Context Engine API, webhooks, processing pipeline |
 | [milestone3-db-setup.sql](milestone3-db-setup.sql) | Standalone pgvector enable snippet for Supabase |
